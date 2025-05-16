@@ -12,6 +12,7 @@
     "? IndustrialDisplayPlates",
     "? Squeak Through",
     "flib >= 0.11.2",
-    "? PickerDollies"
+    "? PickerDollies",
+    "bplib >= 1.0.0"
 	]
 }
