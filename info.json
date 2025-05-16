@@ -13,6 +13,6 @@
     "? Squeak Through",
     "flib >= 0.11.2",
     "? PickerDollies",
-    "bplib >= 1.0.0"
+    "bplib >= 1.1.0"
 	]
 }

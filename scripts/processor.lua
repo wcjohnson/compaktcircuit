@@ -1,5 +1,7 @@
 local migration = require("__flib__.migration")
 
+local bplib = require("__bplib__.blueprint")
+
 local commons = require("scripts.commons")
 local runtime = require("scripts.runtime")
 
@@ -631,6 +633,29 @@ tools.on_event(defines.events.on_entity_died, on_entity_died, mine_filter)
 tools.on_event(defines.events.script_raised_destroy, on_mined, mine_filter)
 tools.on_event(defines.events.on_space_platform_mined_entity, on_space_platform_mined_entity, mine_filter)
 
+---@param bp_setup bplib.BlueprintSetup
+local function extract_tags(bp_setup)
+    if next(procinfos) == nil then return end
+    local map = bp_setup:map_blueprint_indices_to_world_entities()
+    if not map then return end
+
+    for bp_index, entity in pairs(map) do
+        if string.find(entity.name, processor_pattern) then
+            local tags = build.get_processor_tags(entity)
+            bp_setup:set_tags(bp_index, tags)
+        elseif entity.name == internal_iopoint_name then
+            local tags = build.get_internal_iopoint_tags(entity)
+            bp_setup:set_tags(bp_index, tags)
+        elseif entity.name == display_name then
+            local tags = display.get_tags(entity)
+            bp_setup:set_tags(bp_index, tags)
+        elseif entity.name == input_name then
+            local tags = input.get_tags(entity)
+            bp_setup:set_tags(bp_index, tags)
+        end
+    end
+end
+
 ---@param bp LuaItemStack
 ---@param mapping table<integer, LuaEntity>
 ---@param surface LuaSurface
@@ -706,54 +731,11 @@ local function register_mapping(bp, mapping, surface)
     end
 end
 
----@param e EventData.on_gui_closed
-local function on_register_bp(e)
-    local player = game.get_player(e.player_index)
-    ---@cast player -nil
-    local vars = tools.get_vars(player)
-    if e.gui_type == defines.gui_type.item and e.item and e.item.is_blueprint and
-        e.item.is_blueprint_setup() and not player.cursor_stack.valid_for_read then
-        vars.previous_bp = { blueprint = e.item, tick = e.tick }
-    else
-        if vars.previous_bp and e.tick == vars.previous_bp.tick then
-            return
-        end
-        vars.previous_bp = nil
-    end
-end
-
----@param player LuaPlayer
----@return LuaItemStack?
-local function get_bp_to_setup(player)
-    -- normal drag-select
-    local bp = player.blueprint_to_setup
-    if bp and bp.valid_for_read and bp.is_blueprint_setup() then return bp end
-
-    -- alt drag-select (skips configuration dialog)
-    bp = player.cursor_stack
-    if bp and bp.valid_for_read and bp.is_blueprint and bp.is_blueprint_setup() then
-        while bp.is_blueprint_book do
-            bp = bp.get_inventory(defines.inventory.item_main)[bp.active_index]
-        end
-        return bp
-    end
-
-    -- update of existing blueprint
-    local previous_bp = get_vars(player).previous_bp
-    if previous_bp and previous_bp.blueprint and previous_bp.blueprint.valid_for_read and
-        previous_bp.blueprint.is_blueprint_setup() then
-        return previous_bp.blueprint
-    end
-end
-
 tools.on_event(defines.events.on_player_setup_blueprint,
     ---@param e EventData.on_player_setup_blueprint
     function(e)
-        local player = game.players[e.player_index]
-        ---@type table<integer, LuaEntity>
-        local mapping = e.mapping.get()
-        local bp = get_bp_to_setup(player)
-        if bp then register_mapping(bp, mapping, player.surface) end
+        local bp_setup = bplib.BlueprintSetup:new(e)
+        if bp_setup then extract_tags(bp_setup) end
     end)
 
 script.on_event("on_script_setup_blueprint",
@@ -762,8 +744,6 @@ script.on_event("on_script_setup_blueprint",
         local mapping = e.mapping --[[@as table<integer, LuaEntity>]]
         register_mapping(e.stack, mapping, e.surface)
     end)
-
-tools.on_event(defines.events.on_gui_closed, on_register_bp)
 
 ---@param ev EventData.on_entity_cloned
 local function on_entity_cloned(ev)
